@@ -5,12 +5,5 @@
       "maxDuration": 60,
       "memory": 1024
     }
-  },
-  "env": {
-    "ANTHROPIC_API_KEY": "@anthropic-api-key",
-    "GITHUB_TOKEN": "@github-token",
-    "GITHUB_WEBHOOK_SECRET": "@github-webhook-secret",
-    "JWT_SECRET": "@jwt-secret",
-    "DEFAULT_STATE_REPO": "counciloftroas/task-handoff-state"
   }
 }
