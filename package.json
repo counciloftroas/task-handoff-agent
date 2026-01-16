@@ -2,22 +2,36 @@
   "name": "task-handoff-agent",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "task-handoff": "./dist/cli/index.js"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && tsc -p tsconfig.cli.json",
+    "build:cli": "tsc -p tsconfig.cli.json",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cli": "npx tsx src/cli/index.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.15",
+    "@octokit/rest": "^22.0.1",
+    "@octokit/webhooks": "^14.2.0",
+    "ai": "^6.0.39",
+    "jsonwebtoken": "^9.0.3",
     "next": "16.1.3",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "uuid": "^13.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.3",
     "tailwindcss": "^4",
