@@ -1,0 +1,124 @@
+name: no-claude-coauthor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches:
+      - "*"
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  no-claude-coauthor:
+    name: no-claude-coauthor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject Claude and Anthropic attribution
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # A line is forbidden when it is a Co-authored-by trailer whose value
+          # contains "claude" or "anthropic", or a "Generated with Claude Code"
+          # / "Generated with [Claude Code]" attribution. Matching is
+          # case-insensitive and line-oriented.
+          is_forbidden_line() {
+            local line="$1"
+            local lower
+            lower=$(printf '%s\n' "$line" | tr '[:upper:]' '[:lower:]')
+
+            if printf '%s\n' "$lower" | grep -Eq -e 'co-authored-by:.*(claude|anthropic)'; then
+              return 0
+            fi
+
+            if printf '%s\n' "$lower" | grep -Eq -e 'generated with[[:space:]]+(\[claude code\]|claude code)'; then
+              return 0
+            fi
+
+            return 1
+          }
+
+          scan_text() {
+            local label="$1"
+            local text="$2"
+            local line lineno=0
+
+            while IFS= read -r line || [ -n "$line" ]; do
+              lineno=$((lineno + 1))
+              if is_forbidden_line "$line"; then
+                failed=1
+                printf '%s (line %s):\n  %s\n' "$label" "$lineno" "$line"
+                local safe
+                safe=$(printf '%s' "$line" | tr -d '\r' | tr '%' '_')
+                printf '::error::%s (line %s): %s\n' "$label" "$lineno" "$safe"
+              fi
+            done <<< "$text"
+          }
+
+          if [ -z "${BASE_SHA:-}" ] || [ -z "${HEAD_SHA:-}" ]; then
+            echo "error: BASE_SHA and HEAD_SHA are required." >&2
+            exit 1
+          fi
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "error: base commit ${BASE_SHA} is not in the checkout." >&2
+            exit 1
+          fi
+          if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            echo "error: head commit ${HEAD_SHA} is not in the checkout." >&2
+            exit 1
+          fi
+
+          failed=0
+          echo "Checking commits ${BASE_SHA}..${HEAD_SHA}"
+
+          commits=$(git rev-list "${BASE_SHA}..${HEAD_SHA}") || {
+            echo "error: git rev-list failed for ${BASE_SHA}..${HEAD_SHA}" >&2
+            exit 1
+          }
+
+          if [ -n "$commits" ]; then
+            while IFS= read -r commit; do
+              [ -z "$commit" ] && continue
+              short=$(git rev-parse --short=12 "$commit")
+              subject=$(git log -1 --format=%s "$commit")
+              message=$(git log -1 --format=%B "$commit")
+              scan_text "Forbidden line in commit ${short} (${commit}) \"${subject}\"" "$message"
+            done <<< "$commits"
+          fi
+
+          scan_text "Forbidden line in pull request body" "${PR_BODY-}"
+
+          if [ "$failed" -ne 0 ]; then
+            cat <<'EOF'
+
+          This pull request contains a Claude or Anthropic co-author or attribution line.
+          The matching commit messages and pull request body lines are listed above.
+
+          How to fix commit messages:
+            1. Interactive rebase onto the base and reword each listed commit:
+                 git rebase -i <base-branch>
+               Change "pick" to "reword", then delete lines that match either pattern:
+                 Co-authored-by: ... (anything containing "claude" or "anthropic")
+                 Generated with Claude Code
+                 Generated with [Claude Code]
+            2. Force-push the rewritten branch:
+                 git push --force-with-lease
+
+          How to fix the pull request body:
+            Edit the description, remove the same lines, and save.
+          EOF
+            exit 1
+          fi
+
+          echo "No Claude or Anthropic co-author or attribution lines found."
